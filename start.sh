@@ -24,8 +24,12 @@ Conf_Dir="$Server_Dir/conf"
 Temp_Dir="$Server_Dir/temp"
 Log_Dir="$Server_Dir/logs"
 
-# 将 CLASH_URL 变量的值赋给 URL 变量，并检查 CLASH_URL 是否为空
-URL=${CLASH_URL:?Error: CLASH_URL variable is not set or empty}
+SkipDownload=${SKIP_DOWNLOAD:-false}
+
+if [[ $SkipDownload == false ]];then
+	# 将 CLASH_URL 变量的值赋给 URL 变量，并检查 CLASH_URL 是否为空
+	URL=${CLASH_URL:?Error: CLASH_URL variable is not set or empty}
+fi
 
 # 获取 CLASH_SECRET 值，如果不存在则生成一个随机数
 Secret=${CLASH_SECRET:-$(openssl rand -hex 32)}
@@ -95,38 +99,53 @@ unset HTTPS_PROXY
 unset NO_PROXY
 
 
-## Clash 订阅地址检测及配置文件下载
-# 检查url是否有效
-echo -e '\n正在检测订阅地址...'
-Text1="Clash订阅地址可访问！"
-Text2="Clash订阅地址不可访问！"
-#curl -o /dev/null -s -m 10 --connect-timeout 10 -w %{http_code} $URL | grep '[23][0-9][0-9]' &>/dev/null
-curl -o /dev/null -L -k -sS --retry 5 -m 10 --connect-timeout 10 -w "%{http_code}" $URL | grep -E '^[23][0-9]{2}$' &>/dev/null
-ReturnStatus=$?
-if_success $Text1 $Text2 $ReturnStatus
+if [[ $SkipDownload == false ]];then
 
-# 拉取更新config.yml文件
-echo -e '\n正在下载Clash配置文件...'
-Text3="配置文件config.yaml下载成功！"
-Text4="配置文件config.yaml下载失败，退出启动！"
 
-# 尝试使用curl进行下载
-curl -L -k -sS --retry 5 -m 10 -o $Temp_Dir/clash.yaml $URL
-ReturnStatus=$?
-if [ $ReturnStatus -ne 0 ]; then
-	# 如果使用curl下载失败，尝试使用wget进行下载
-	for i in {1..10}
-	do
-		wget -q --no-check-certificate -O $Temp_Dir/clash.yaml $URL
-		ReturnStatus=$?
-		if [ $ReturnStatus -eq 0 ]; then
-			break
-		else
-			continue
-		fi
-	done
+	## Clash 订阅地址检测及配置文件下载
+	# 检查url是否有效
+	echo -e '\n正在检测订阅地址...'
+	Text1="Clash订阅地址可访问！"
+	Text2="Clash订阅地址不可访问！"
+	#curl -o /dev/null -s -m 10 --connect-timeout 10 -w %{http_code} $URL | grep '[23][0-9][0-9]' &>/dev/null
+	curl -o /dev/null -L -k -sS --retry 5 -m 10 --connect-timeout 10 -w "%{http_code}" $URL | grep -E '^[23][0-9]{2}$' &>/dev/null
+	ReturnStatus=$?
+	if_success $Text1 $Text2 $ReturnStatus
+
+	# 拉取更新config.yml文件
+	echo -e '\n正在下载Clash配置文件...'
+	Text3="配置文件config.yaml下载成功！"
+	Text4="配置文件config.yaml下载失败，退出启动！"
+
+	# 尝试使用curl进行下载
+	curl -L -k -sS --retry 5 -m 10 -o $Temp_Dir/clash.yaml $URL
+	ReturnStatus=$?
+	if [ $ReturnStatus -ne 0 ]; then
+		# 如果使用curl下载失败，尝试使用wget进行下载
+		for i in {1..10}
+		do
+			wget -q --no-check-certificate -O $Temp_Dir/clash.yaml $URL
+			ReturnStatus=$?
+			if [ $ReturnStatus -eq 0 ]; then
+				break
+			else
+				continue
+			fi
+		done
+	fi
+	if_success $Text3 $Text4 $ReturnStatus
+else
+	echo -e '\n跳过下载Clash配置文件...'
+	if [[ -e "$Temp_Dir/clash.yaml" ]];then
+		echo -e '\n检测$Temp_Dir/clash.yaml，成功...'
+	else
+		echo -e "\n未检测到$Temp_Dir/clash.yaml，退出启动！"
+		exit 1
+	fi
+	
 fi
-if_success $Text3 $Text4 $ReturnStatus
+
+
 
 # 重命名clash配置文件
 \cp -a $Temp_Dir/clash.yaml $Temp_Dir/clash_config.yaml
